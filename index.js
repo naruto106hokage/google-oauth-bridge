@@ -69,10 +69,11 @@ app.get('/api/v1/auth/google', async (req, res) => {
     );
 
     // 4️⃣ Return JSON (TESTING)
-    res.json({
-      googleUser,
-      loginResponse: loginRes.data
-    });
+    const appToken = loginRes.data.token;
+
+    res.redirect(
+      `mutants://login?token=${encodeURIComponent(appToken)}`
+    );
 
     // 🔥 PRODUCTION (ENABLE LATER)
     // const appToken = loginRes.data.token;
