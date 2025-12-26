@@ -2,30 +2,38 @@ require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
-
 const app = express();
+
 const PORT = process.env.PORT || 3000;
 
+// Google OAuth callback
 app.get('/api/v1/auth/google', async (req, res) => {
   try {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing code');
 
-    // 1️⃣ Exchange code for token
+    // 1️⃣ Exchange authorization code for access token (FORM URLENCODED)
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('client_id', process.env.GOOGLE_CLIENT_ID);
+    tokenParams.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
+    tokenParams.append('code', code);
+    tokenParams.append('grant_type', 'authorization_code');
+    tokenParams.append('redirect_uri', process.env.GOOGLE_REDIRECT_URI);
+
     const tokenRes = await axios.post(
       'https://oauth2.googleapis.com/token',
+      tokenParams.toString(),
       {
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
       }
     );
 
     const accessToken = tokenRes.data.access_token;
+    if (!accessToken) throw new Error('No access token from Google');
 
-    // 2️⃣ Get Google user info
+    // 2️⃣ Fetch Google profile
     const userRes = await axios.get(
       'https://www.googleapis.com/oauth2/v2/userinfo',
       {
@@ -37,7 +45,7 @@ app.get('/api/v1/auth/google', async (req, res) => {
 
     const googleUser = userRes.data;
 
-    // 3️⃣ Call YOUR existing login API
+    // 3️⃣ Call YOUR existing login API (NO CHANGES REQUIRED)
     const formData = new URLSearchParams();
     formData.append('login_type', 'social');
     formData.append('provider', 'google');
@@ -49,28 +57,33 @@ app.get('/api/v1/auth/google', async (req, res) => {
 
     const loginRes = await axios.post(
       'https://thehinduism.me/api/v1/login',
-      formData,
+      formData.toString(),
       {
         headers: {
           'Accept': 'application/json',
           'System-Key': 'iis-postman',
-          'App-Language': 'hi'
+          'App-Language': 'hi',
+          'Content-Type': 'application/x-www-form-urlencoded'
         }
       }
     );
 
-    // 4️⃣ Return response (TEMP: JSON for testing)
+    // 4️⃣ Return JSON (TESTING)
     res.json({
       googleUser,
       loginResponse: loginRes.data
     });
 
+    // 🔥 PRODUCTION (ENABLE LATER)
+    // const appToken = loginRes.data.token;
+    // res.redirect(`mutants://login?token=${appToken}`);
+
   } catch (err) {
-    console.error(err.response?.data || err.message);
+    console.error('Google OAuth Error:', err.response?.data || err.message);
     res.status(500).json({ error: 'Google login failed' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`OAuth bridge running on http://localhost:${PORT}`);
+  console.log(`OAuth bridge running on port ${PORT}`);
 });
