@@ -70,11 +70,12 @@ app.get('/api/v1/auth/google', async (req, res) => {
 
     // 4️⃣ Return JSON (TESTING)
     const appToken = loginRes.data.token;
+    console.log('Redirecting to deep link with token:', appToken);
 
     res.redirect(
       `mutants://login?token=${encodeURIComponent(appToken)}`
     );
-
+    
     // 🔥 PRODUCTION (ENABLE LATER)
     // const appToken = loginRes.data.token;
     // res.redirect(`mutants://login?token=${appToken}`);
