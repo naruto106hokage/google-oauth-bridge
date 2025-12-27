@@ -56,7 +56,7 @@ app.get('/api/v1/auth/google', async (req, res) => {
     formData.append('device_type', 'android');
 
     const loginRes = await axios.post(
-      'https://mutants.assertinfotech.com/api/v1',
+      'https://mutants.assertinfotech.com/api/v1/login',
       formData.toString(),
       {
         headers: {
