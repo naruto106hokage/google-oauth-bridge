@@ -7,18 +7,32 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ DEV ONLY — SSL bypass agent
+// ⚠️ DEV ONLY SSL BYPASS
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
-// Google OAuth callback
 app.get('/api/v1/auth/google', async (req, res) => {
-  try {
-    const code = req.query.code;
-    if (!code) return res.status(400).send('Missing code');
+  console.log('================ GOOGLE OAUTH DEBUG START ================');
 
-    // 1️⃣ Exchange authorization code for access token
+  try {
+    // 🔎 STEP 0 — LOG QUERY PARAMS
+    console.log('Incoming Query Params:', req.query);
+
+    const code = req.query.code;
+    if (!code) {
+      console.error('❌ Missing authorization code');
+      return res.status(400).send('Missing code');
+    }
+
+    console.log('✅ Authorization Code:', code);
+
+    // 🔎 STEP 1 — LOG ENV VALUES
+    console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
+    console.log('GOOGLE_CLIENT_SECRET EXISTS:', !!process.env.GOOGLE_CLIENT_SECRET);
+    console.log('GOOGLE_REDIRECT_URI:', process.env.GOOGLE_REDIRECT_URI);
+
+    // 🔎 STEP 2 — PREPARE TOKEN REQUEST
     const tokenParams = new URLSearchParams();
     tokenParams.append('client_id', process.env.GOOGLE_CLIENT_ID);
     tokenParams.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
@@ -26,20 +40,33 @@ app.get('/api/v1/auth/google', async (req, res) => {
     tokenParams.append('grant_type', 'authorization_code');
     tokenParams.append('redirect_uri', process.env.GOOGLE_REDIRECT_URI);
 
-    const tokenRes = await axios.post(
-      'https://oauth2.googleapis.com/token',
-      tokenParams.toString(),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+    console.log('Token Request Body:', tokenParams.toString());
+
+    // 🔎 STEP 3 — TOKEN EXCHANGE
+    let tokenRes;
+    try {
+      tokenRes = await axios.post(
+        'https://oauth2.googleapis.com/token',
+        tokenParams.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
         }
-      }
-    );
+      );
+    } catch (e) {
+      console.error('❌ TOKEN EXCHANGE FAILED');
+      console.error('Google Response:', e.response?.data);
+      console.error('Status:', e.response?.status);
+      throw e;
+    }
+
+    console.log('✅ Token Exchange Success:', tokenRes.data);
 
     const accessToken = tokenRes.data.access_token;
-    if (!accessToken) throw new Error('No access token from Google');
+    if (!accessToken) throw new Error('No access token returned');
 
-    // 2️⃣ Fetch Google profile
+    // 🔎 STEP 4 — FETCH GOOGLE PROFILE
     const userRes = await axios.get(
       'https://www.googleapis.com/oauth2/v2/userinfo',
       {
@@ -49,9 +76,11 @@ app.get('/api/v1/auth/google', async (req, res) => {
       }
     );
 
+    console.log('✅ Google User Profile:', userRes.data);
+
     const googleUser = userRes.data;
 
-    // 3️⃣ Call YOUR backend login API (SSL BYPASS HERE)
+    // 🔎 STEP 5 — BACKEND LOGIN REQUEST
     const formData = new URLSearchParams();
     formData.append('login_type', 'social');
     formData.append('provider', 'google');
@@ -61,11 +90,13 @@ app.get('/api/v1/auth/google', async (req, res) => {
     formData.append('profile_image', googleUser.picture || '');
     formData.append('device_type', 'android');
 
+    console.log('Backend Login Payload:', formData.toString());
+
     const loginRes = await axios.post(
       'https://mutants.assertinfotech.com/api/v1/login',
       formData.toString(),
       {
-        httpsAgent, // ⚠️ DEV ONLY
+        httpsAgent, // DEV ONLY
         headers: {
           'Accept': 'application/json',
           'System-Key': 'iis-postman',
@@ -75,31 +106,31 @@ app.get('/api/v1/auth/google', async (req, res) => {
       }
     );
 
-    // 4️⃣ Redirect back to Unity via deep link
+    console.log('✅ Backend Login Response:', loginRes.data);
+
     const appToken =
       loginRes.data.token ||
       loginRes.data.data?.token;
 
     if (!appToken) {
-      console.error('Token missing in backend response:', loginRes.data);
+      console.error('❌ Token missing in backend response');
       return res.status(500).json({ error: 'Token missing' });
     }
 
-    console.log('Redirecting to deep link with token:', appToken);
+    console.log('✅ FINAL APP TOKEN:', appToken);
+    console.log('================ GOOGLE OAUTH DEBUG END =================');
 
     res.redirect(
       `mutants://login?token=${encodeURIComponent(appToken)}`
     );
 
   } catch (err) {
-    console.error(
-      'Google OAuth Error:',
-      err.response?.data || err.message
-    );
-    res.status(500).json({ error: 'Google login failed' });
+    console.error('🔥 GOOGLE OAUTH DEBUG ERROR');
+    console.error(err.response?.data || err.message);
+    res.status(500).json({ error: 'Google login failed (debug)' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`OAuth bridge running on port ${PORT}`);
+  console.log(`OAuth DEBUG server running on port ${PORT}`);
 });
