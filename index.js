@@ -2,9 +2,15 @@ require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
-const app = express();
+const https = require('https');
 
+const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ⚠️ DEV ONLY — SSL bypass agent
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 // Google OAuth callback
 app.get('/api/v1/auth/google', async (req, res) => {
@@ -12,7 +18,7 @@ app.get('/api/v1/auth/google', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing code');
 
-    // 1️⃣ Exchange authorization code for access token (FORM URLENCODED)
+    // 1️⃣ Exchange authorization code for access token
     const tokenParams = new URLSearchParams();
     tokenParams.append('client_id', process.env.GOOGLE_CLIENT_ID);
     tokenParams.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
@@ -45,7 +51,7 @@ app.get('/api/v1/auth/google', async (req, res) => {
 
     const googleUser = userRes.data;
 
-    // 3️⃣ Call YOUR existing login API (NO CHANGES REQUIRED)
+    // 3️⃣ Call YOUR backend login API (SSL BYPASS HERE)
     const formData = new URLSearchParams();
     formData.append('login_type', 'social');
     formData.append('provider', 'google');
@@ -59,6 +65,7 @@ app.get('/api/v1/auth/google', async (req, res) => {
       'https://mutants.assertinfotech.com/api/v1/login',
       formData.toString(),
       {
+        httpsAgent, // ⚠️ DEV ONLY
         headers: {
           'Accept': 'application/json',
           'System-Key': 'iis-postman',
@@ -68,20 +75,27 @@ app.get('/api/v1/auth/google', async (req, res) => {
       }
     );
 
-    // 4️⃣ Return JSON (TESTING)
-    const appToken = loginRes.data.token;
+    // 4️⃣ Redirect back to Unity via deep link
+    const appToken =
+      loginRes.data.token ||
+      loginRes.data.data?.token;
+
+    if (!appToken) {
+      console.error('Token missing in backend response:', loginRes.data);
+      return res.status(500).json({ error: 'Token missing' });
+    }
+
     console.log('Redirecting to deep link with token:', appToken);
 
     res.redirect(
       `mutants://login?token=${encodeURIComponent(appToken)}`
     );
-    
-    // 🔥 PRODUCTION (ENABLE LATER)
-    // const appToken = loginRes.data.token;
-    // res.redirect(`mutants://login?token=${appToken}`);
 
   } catch (err) {
-    console.error('Google OAuth Error:', err.response?.data || err.message);
+    console.error(
+      'Google OAuth Error:',
+      err.response?.data || err.message
+    );
     res.status(500).json({ error: 'Google login failed' });
   }
 });
